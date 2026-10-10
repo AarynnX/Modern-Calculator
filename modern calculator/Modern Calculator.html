@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calculator</title>
+<style>
+  :root {
+    --page:#e9ecf3; --body:#f6f7fb; --screen:#ffffff; --fg:#1b1d27; --muted:#7a7f93;
+    --key:#ffffff; --key-fg:#1b1d27; --fn:#e3e6ef; --op:#6c5ce7; --op-fg:#fff; --eq:#00b894; --shadow:rgba(40,50,90,.18);
+    box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page:#0d0f16; --body:#171a25; --screen:#0f111a; --fg:#f1f2f8; --muted:#8c91a8;
+      --key:#222637; --key-fg:#f1f2f8; --fn:#2d3248; --op:#7c6cf5; --eq:#00c9a0; --shadow:rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --page:#0d0f16; --body:#171a25; --screen:#0f111a; --fg:#f1f2f8; --muted:#8c91a8;
+    --key:#222637; --key-fg:#f1f2f8; --fn:#2d3248; --op:#7c6cf5; --eq:#00c9a0; --shadow:rgba(0,0,0,.5);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--page); color:var(--fg); font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .calc { width:100%; max-width:360px; background:var(--body); border-radius:28px; padding:18px; box-shadow:0 24px 60px var(--shadow); }
+  .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .top b { font-size:14px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+  .theme { border:none; background:var(--fn); color:var(--fg); border-radius:12px; padding:6px 10px; cursor:pointer; font-size:14px; }
+  .screen { background:var(--screen); border-radius:18px; padding:14px 16px; text-align:right; min-height:110px; display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden; }
+  .expr { color:var(--muted); font-size:15px; min-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .out { font-size:44px; font-weight:600; line-height:1.2; white-space:nowrap; overflow:hidden; }
+  .keys { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:14px; }
+  .keys button { border:none; border-radius:18px; height:62px; font-size:22px; font-weight:500; cursor:pointer; background:var(--key); color:var(--key-fg); box-shadow:0 2px 0 var(--shadow); transition:transform .08s, filter .15s; font-family:inherit; }
+  .keys button:hover { filter:brightness(.96); }
+  .keys button:active { transform:scale(.94); }
+  .keys .fn { background:var(--fn); }
+  .keys .op { background:var(--op); color:var(--op-fg); }
+  .keys .eq { background:var(--eq); color:#fff; }
+  .keys .zero { grid-column:span 2; }
+  .hist { margin-top:14px; font-size:13px; color:var(--muted); display:flex; flex-direction:column; gap:4px; max-height:84px; overflow:auto; }
+  .hist div { cursor:pointer; display:flex; justify-content:space-between; gap:8px; }
+  .hist div:hover { color:var(--fg); }
+</style>
+</head>
+<body>
+<main class="calc">
+  <div class="top"><b>Calculator</b><button class="theme" id="theme" aria-label="Toggle theme">Theme</button></div>
+  <div class="screen"><div class="expr" id="expr"></div><div class="out" id="out">0</div></div>
+  <div class="keys" id="keys">
+    <button class="fn" data-a="clear">AC</button>
+    <button class="fn" data-a="sign">+/-</button>
+    <button class="fn" data-a="percent">%</button>
+    <button class="op" data-a="op" data-v="÷">÷</button>
+    <button data-a="num" data-v="7">7</button>
+    <button data-a="num" data-v="8">8</button>
+    <button data-a="num" data-v="9">9</button>
+    <button class="op" data-a="op" data-v="×">×</button>
+    <button data-a="num" data-v="4">4</button>
+    <button data-a="num" data-v="5">5</button>
+    <button data-a="num" data-v="6">6</button>
+    <button class="op" data-a="op" data-v="-">−</button>
+    <button data-a="num" data-v="1">1</button>
+    <button data-a="num" data-v="2">2</button>
+    <button data-a="num" data-v="3">3</button>
+    <button class="op" data-a="op" data-v="+">+</button>
+    <button class="zero" data-a="num" data-v="0">0</button>
+    <button data-a="dot">.</button>
+    <button class="eq" data-a="eq">=</button>
+  </div>
+  <div class="hist" id="hist"></div>
+</main>
+
+<script>
+let cur = '0', prev = null, op = null, fresh = false;
+const history = [];
+const $ = id => document.getElementById(id);
+const ops = { '+':(a,b)=>a+b, '-':(a,b)=>a-b, '×':(a,b)=>a*b, '÷':(a,b)=>b===0?NaN:a/b };
+const fmt = n => isFinite(n) ? String(parseFloat(n.toPrecision(12))) : 'Error';
+
+function render(expr) {
+  const out = $('out');
+  out.textContent = cur;
+  out.style.fontSize = cur.length > 14 ? '24px' : cur.length > 10 ? '32px' : '44px';
+  if (expr !== undefined) $('expr').textContent = expr;
+}
+function guard() { if (cur === 'Error') { cur = '0'; prev = null; op = null; } }
+
+function num(d) {
+  guard();
+  if (fresh) { cur = '0'; fresh = false; }
+  if (cur.replace('-', '').replace('.', '').length >= 15) return;
+  cur = cur === '0' ? d : cur === '-0' ? '-' + d : cur + d;
+  render();
+}
+function dot() {
+  guard();
+  if (fresh) { cur = '0'; fresh = false; }
+  if (!cur.includes('.')) cur += '.';
+  render();
+}
+function operator(o) {
+  guard();
+  if (op && !fresh) { const r = ops[op](prev, parseFloat(cur)); cur = fmt(r); prev = r; }
+  else prev = parseFloat(cur);
+  if (cur === 'Error') return render('');
+  op = o; fresh = true;
+  render(fmt(prev) + ' ' + o);
+}
+function equals() {
+  if (!op) return;
+  const b = parseFloat(cur), r = ops[op](prev, b);
+  const line = fmt(prev) + ' ' + op + ' ' + fmt(b);
+  cur = fmt(r);
+  if (cur !== 'Error') { history.unshift({ line, res: cur }); history.length = Math.min(history.length, 8); drawHist(); }
+  op = null; fresh = true;
+  render(line + ' =');
+}
+function clear() { cur = '0'; prev = null; op = null; fresh = false; render(''); }
+function back() {
+  guard();
+  if (fresh) return;
+  cur = cur.length > 1 && !(cur.length === 2 && cur[0] === '-') ? cur.slice(0, -1) : '0';
+  render();
+}
+function sign() { guard(); if (cur !== '0') cur = cur[0] === '-' ? cur.slice(1) : '-' + cur; render(); }
+function percent() { guard(); cur = fmt(parseFloat(cur) / 100); render(); }
+
+function drawHist() {
+  const h = $('hist');
+  h.replaceChildren(...history.map(e => {
+    const d = document.createElement('div');
+    const l = document.createElement('span'), r = document.createElement('span');
+    l.textContent = e.line + ' ='; r.textContent = e.res;
+    d.append(l, r);
+    d.onclick = () => { cur = e.res; fresh = true; op = null; render(e.line + ' ='); };
+    return d;
+  }));
+}
+
+$('keys').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const a = b.dataset.a, v = b.dataset.v;
+  ({ num:()=>num(v), op:()=>operator(v), dot, eq:equals, clear, sign, percent })[a]();
+});
+
+document.addEventListener('keydown', e => {
+  const k = e.key;
+  if (/^[0-9]$/.test(k)) num(k);
+  else if (k === '.') dot();
+  else if (k === '+' || k === '-') operator(k);
+  else if (k === '*') operator('×');
+  else if (k === '/') { e.preventDefault(); operator('÷'); }
+  else if (k === 'Enter' || k === '=') { e.preventDefault(); equals(); }
+  else if (k === 'Backspace') back();
+  else if (k === 'Escape') clear();
+  else if (k === '%') percent();
+});
+
+// Theme toggle (remembered per viewer, safely)
+const root = document.documentElement;
+try { const t = localStorage.getItem('calc-theme'); if (t) root.dataset.theme = t; } catch (e) {}
+$('theme').onclick = () => {
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('calc-theme', root.dataset.theme); } catch (e) {}
+};
+render('');
+</script>
+</body>
+</html>
